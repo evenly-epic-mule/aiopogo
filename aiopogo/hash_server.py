@@ -19,6 +19,8 @@ class HashServer:
     loop = get_event_loop()
     status = {}
     log = getLogger('hashing')
+    hash_endpoint = 'http://pokehash.buddyauth.com/api'
+    apiversion = 'v157_5'
 
     def __init__(self):
         try:
@@ -57,7 +59,7 @@ class HashServer:
         # request hashes from hashing server
         for attempt in range(3):
             try:
-                async with self._session.post("http://pokehash.buddyauth.com/api/v157_5/hash", headers=headers, json=payload) as resp:
+                async with self._session.post(self.hash_endpoint + '/' + self.apiversion + '/hash', headers=headers, json=payload) as resp:
                     if resp.status == 400:
                         status['failures'] += 1
 
@@ -88,10 +90,19 @@ class HashServer:
             except ClientResponseError as e:
                 if e.code == 403:
                     raise TempHashingBanException('Your IP was temporarily banned for sending too many requests with invalid keys')
-                elif e.code == 429:
+                elif e.code == 429 or e.code == 430:
+                    if e.code == 430 and 'goman' in self.hash_endpoint:
+                        self.log.warning("Error 430 - No credit remaining on the GoMan Hash key.")
                     status['remaining'] = 0
                     self.instance_token = self.auth_token
                     return await self.hash(timestamp, latitude, longitude, accuracy, authticket, sessiondata, requests)
+                elif e.code == 503 and 'goman' in self.hash_endpoint:
+                    # TimeoutError passed through by GoMan
+                    if attempt < 2:
+                        self.log.info('Hashing request timed out.')
+                        await sleep(1.5 * (attempt + 1))
+                    else:
+                        raise HashingTimeoutException('Hashing request timed out.') from e
                 elif e.code >= 500 or e.code == 404:
                     raise HashingOfflineException(
                         'Hashing server error {}: {}'.format(
@@ -140,9 +151,11 @@ class HashServer:
         return self.key_statuses[self.instance_token]
 
     @classmethod
-    def activate_session(cls, conn_limit=300):
+    def activate_session(cls, conn_limit=300, conn_timeout=4.5, hash_endpoint=None):
         if cls._session and not cls._session.closed:
             return
+        if hash_endpoint:
+            cls.hash_endpoint = hash_endpoint.rstrip('/')
         conn = TimedConnector(loop=cls.loop,
                               limit=conn_limit,
                               verify_ssl=False)
@@ -153,7 +166,7 @@ class HashServer:
                                      loop=cls.loop,
                                      headers=headers,
                                      raise_for_status=False,
-                                     conn_timeout=4.5,
+                                     conn_timeout=conn_timeout,
                                      json_serialize=json_dumps)
 
     @classmethod

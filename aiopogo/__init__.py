@@ -41,6 +41,6 @@ def close_sessions():
     HashServer.close_session()
 
 
-def activate_hash_server(hash_token, conn_limit=300):
+def activate_hash_server(hash_token, conn_limit=300, conn_timeout=4.5, hash_endpoint=None):
     HashServer.set_token(hash_token)
-    HashServer.activate_session(conn_limit)
+    HashServer.activate_session(conn_limit, conn_timeout=conn_timeout, hash_endpoint=hash_endpoint)
