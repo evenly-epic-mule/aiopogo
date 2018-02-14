@@ -25,7 +25,7 @@ class PGoApi:
     log = getLogger(__name__)
     log.info('%s v%s', __title__, __version__)
 
-    def __init__(self, lat=None, lon=None, alt=None, proxy=None, device_info=None):
+    def __init__(self, lat=None, lon=None, alt=None, proxy=None, ptc_proxy=None, device_info=None):
         self.auth_provider = None
         self.state = RpcState()
 
@@ -37,6 +37,8 @@ class PGoApi:
 
         self.proxy_auth = None
         self.proxy = proxy
+        self.ptc_proxy_auth = None
+        self.ptc_proxy = ptc_proxy
         self.device_info = device_info
 
     async def set_authentication(self, provider='ptc', username=None, password=None, timeout=10, locale='en_US', refresh_token=None):
@@ -44,8 +46,8 @@ class PGoApi:
             self.auth_provider = AuthPtc(
                 username,
                 password,
-                proxy=self._proxy,
-                proxy_auth=self.proxy_auth,
+                proxy=self._ptc_proxy,
+                proxy_auth=self.ptc_proxy_auth,
                 timeout=timeout)
         elif provider == 'google':
             self.auth_provider = AuthGoogle(
@@ -107,6 +109,30 @@ class PGoApi:
                         self._proxy.user, self._proxy.password)
                 elif scheme == 'socks4':
                     self.proxy_auth = Socks4Auth(self._proxy.user)
+                else:
+                    raise ValueError(
+                        'Proxy protocol must be http, socks5, or socks4.')
+
+    @property
+    def ptc_proxy(self):
+        return self._ptc_proxy
+
+    @ptc_proxy.setter
+    def ptc_proxy(self, proxy):
+        if proxy is None:
+            self._ptc_proxy = proxy
+        else:
+            self._ptc_proxy = URL(proxy)
+            if self._ptc_proxy.user:
+                scheme = self._ptc_proxy.scheme
+                if scheme == 'http':
+                    self.ptc_proxy_auth = BasicAuth(
+                        self._ptc_proxy.user, self._ptc_proxy.password)
+                elif scheme == 'socks5':
+                    self.ptc_proxy_auth = Socks5Auth(
+                        self._ptc_proxy.user, self._ptc_proxy.password)
+                elif scheme == 'socks4':
+                    self.ptc_proxy_auth = Socks4Auth(self._ptc_proxy.user)
                 else:
                     raise ValueError(
                         'Proxy protocol must be http, socks5, or socks4.')
